@@ -1,5 +1,9 @@
 (ns retree.core
-  (:refer-clojure :exclude (not repeat some iterate range while)))
+  (:refer-clojure :exclude (not repeat some iterate range while))
+  (:require [clojure.core.typed :refer [;types
+                                        Option
+                                        ;vars
+                                        ann ann-form check-ns cf def-alias]]))
 
 ;; The master plan:
 ;; v1: Function Combinators
@@ -23,36 +27,48 @@
 
 ;;; Primitive Strategies
 
+(def-alias Comb
+  (TFn [[i :variance :contravariant]
+        [o :variance :covariant]]
+    [i -> (Option o)]))
+
+(ann pass (All [x] (Comb x x)))
 (defn pass [t] t)
 
+(ann fail (All [x] (Comb x nil)))
 (defn fail [t] nil)
 
+(ann build (All [x y] [x -> (Comb Any x)]))
 (defn build [t]
   (fn [_]
     t))
 
+(ann term (All [x y] [x -> (Comb x x)]))
 (defn term [t]
   (fn [u]
     (when (= t u)
       t)))
 
+(ann pipe (All [x y z] [(Comb x y) (Comb y z) -> (Comb x z)]))
 (defn pipe
   ([p q]
     (fn [t]
       (when-let [t* (p t)]
         (q t*))))
-  ([p q & more]
+  #_([p q & more]
     (apply pipe (pipe p q) more)))
 
+(ann choice (All [x y z] [(Comb x y) (Comb x z) -> (Comb x (U y z))]))
 (defn choice
   ([p q]
     (fn [t]
       (or (p t) (q t))))
-  ([p q & more]
+  #_([p q & more]
     (apply choice (choice p q) more)))
 
 ;;TODO non-deterministic choice (possible name: fork)
 
+(ann branch (All [x y z a] [(Comb x y) (Comb y z) (Comb x a) -> (Comb x (U z a))]))
 (defn branch [p q r]
   (fn [t]
     (if-let [t* (p t)]
@@ -62,9 +78,11 @@
 
 ;;; Repetition
 
+(ann attempt (All [x y] [(Comb x y) -> (Comb x y)]))
 (defn attempt [s]
   (choice s pass))
 
+;(ann repeat (All [x] [(Comb x y) -> 
 (defn repeat [s]
   (fn rec [t]
     ((attempt (pipe s rec)) t)))
@@ -264,6 +282,7 @@
 (def leaf?
   (all fail))
 
+#_(ann not (All [x] [(Comb x y) -> (Comb x y)]))
 (defn not [s]
   (branch s fail pass))
 
